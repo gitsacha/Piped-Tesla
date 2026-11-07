@@ -529,6 +529,34 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
         });
     }
 
+    if (isCanvasMode.value && canvasEl.value && audioEl.value) {
+        if (canvasPlayer) {
+            canvasPlayer.destroy();
+            canvasPlayer = null;
+        }
+        const videoStreams = props.video.videoStreams || [];
+        const mp4Streams = videoStreams.filter(
+            s =>
+                (s.mimeType === "video/mp4" || s.format === "MPEG_4" || s.format === "MP4") &&
+                (!s.codec || s.codec.startsWith("avc1") || s.codec.startsWith("av01") || s.codec.startsWith("hvc1")),
+        );
+        const targetStream =
+            mp4Streams.find(s => s.quality === "720p") ||
+            mp4Streams.find(s => s.quality === "1080p") ||
+            mp4Streams.find(s => s.quality === "480p") ||
+            mp4Streams.find(s => s.quality === "360p") ||
+            mp4Streams[0] ||
+            videoStreams.find(s => s.mimeType === "video/mp4" || s.format === "MPEG_4" || s.format === "MP4") ||
+            videoStreams[0];
+
+        if (targetStream) {
+            canvasPlayer = new CanvasPlayerEngine(canvasEl.value, audioEl.value);
+            canvasPlayer.load(targetStream.url, props.video.duration, startTime, props.video.proxyUrl).catch(e => {
+                console.error("CanvasPlayerEngine error:", e);
+            });
+        }
+    }
+
     playerInstance
         .load(uri, null, mime)
         .then(async () => {
@@ -607,39 +635,6 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
 
             applyPreferredTextTrack();
             await setupThumbnailTrack();
-
-            if (isCanvasMode.value && canvasEl.value && audioEl.value) {
-                if (canvasPlayer) {
-                    canvasPlayer.destroy();
-                    canvasPlayer = null;
-                }
-                const videoStreams = props.video.videoStreams || [];
-                const mp4Streams = videoStreams.filter(
-                    s =>
-                        (s.mimeType === "video/mp4" || s.format === "MPEG_4" || s.format === "MP4") &&
-                        (!s.codec ||
-                            s.codec.startsWith("avc1") ||
-                            s.codec.startsWith("av01") ||
-                            s.codec.startsWith("hvc1")),
-                );
-                const targetStream =
-                    mp4Streams.find(s => s.quality === "720p") ||
-                    mp4Streams.find(s => s.quality === "1080p") ||
-                    mp4Streams.find(s => s.quality === "480p") ||
-                    mp4Streams.find(s => s.quality === "360p") ||
-                    mp4Streams[0] ||
-                    videoStreams.find(s => s.mimeType === "video/mp4" || s.format === "MPEG_4" || s.format === "MP4") ||
-                    videoStreams[0];
-
-                if (targetStream) {
-                    canvasPlayer = new CanvasPlayerEngine(canvasEl.value, audioEl.value);
-                    canvasPlayer
-                        .load(targetStream.url, props.video.duration, startTime, props.video.proxyUrl)
-                        .catch(e => {
-                            console.error("CanvasPlayerEngine error:", e);
-                        });
-                }
-            }
         })
         .catch(e => {
             console.error(e);

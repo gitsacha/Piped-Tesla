@@ -57,6 +57,8 @@ export class CanvasPlayerEngine {
         this.isSeeking = false;
         this.needsKeyframe = true;
         this.seekEpoch = 0;
+        this.hasRenderedFirstFrame = false;
+        this.initialStartTime = 0;
         this.maxBufferAheadSeconds = 12; // Buffer up to 12s ahead of mediaClock.currentTime
         this.maxQueuedFrames = 25; // Strict cap on open GPU VideoFrame allocations
 
@@ -116,27 +118,12 @@ export class CanvasPlayerEngine {
     async load(videoUrl, expectedDuration = 0, startTime = 0, proxyUrl = "") {
         this.videoUrl = rewriteStreamUrl(videoUrl, proxyUrl);
         this.duration = expectedDuration;
+        this.initialStartTime = startTime;
+        this.hasRenderedFirstFrame = false;
         this.isReady = false;
         this.currentByteOffset = 0;
         this.totalBytes = null;
         this.abortController = new AbortController();
-
-        // Probe total content length upfront via HEAD request
-        try {
-            const headRes = await fetch(this.videoUrl, {
-                method: "HEAD",
-                signal: this.abortController?.signal,
-            });
-            const clen = headRes.headers.get("Content-Length");
-            if (clen) {
-                const parsed = parseInt(clen, 10);
-                if (!isNaN(parsed) && parsed > 0) {
-                    this.totalBytes = parsed;
-                }
-            }
-        } catch {
-            // Non-fatal if HEAD fails; range requests will determine size
-        }
 
         // Initialize MP4Box parser
         this.mp4box = MP4Box.createFile();
@@ -167,11 +154,6 @@ export class CanvasPlayerEngine {
         }
 
         await readyPromise;
-
-        // If an initial start time is specified (e.g. from ?t= or watch history), seek immediately
-        if (startTime > 0) {
-            this.seekToTime(startTime);
-        }
 
         // Start render loop
         this.startRenderLoop();
@@ -209,6 +191,17 @@ export class CanvasPlayerEngine {
                 this.decodeSample(sample);
             }
         };
+
+        const targetStartTime = Math.max(this.initialStartTime || 0, this.mediaClock?.currentTime || 0);
+        if (targetStartTime > 0.5) {
+            const trak = this.mp4box.getTrackById(this.videoTrack.id);
+            const seekInfo = trak
+                ? this.mp4box.seekTrack(targetStartTime, true, trak)
+                : this.mp4box.seek(targetStartTime, true);
+            if (seekInfo && typeof seekInfo.offset === "number") {
+                this.currentByteOffset = seekInfo.offset;
+            }
+        }
 
         this.mp4box.start();
         this.isReady = true;
@@ -251,6 +244,12 @@ export class CanvasPlayerEngine {
                     return;
                 }
                 this.frameQueue.push(videoFrame);
+                if (
+                    !this.hasRenderedFirstFrame ||
+                    (this.mediaClock && this.mediaClock.paused && this.frameQueue.length === 1)
+                ) {
+                    this.renderFrame();
+                }
             },
             error: err => {
                 console.error("WebCodecs VideoDecoder runtime error:", err);
@@ -425,6 +424,17 @@ export class CanvasPlayerEngine {
 
         const masterTimeUs = this.mediaClock.currentTime * 1_000_000; // Microseconds
 
+        // If we haven't rendered any frame yet, draw the first decoded frame immediately
+        // so the canvas isn't left blank while catching up to current audio time.
+        if (!this.hasRenderedFirstFrame && this.frameQueue.length > 0) {
+            try {
+                this.ctx.drawImage(this.frameQueue[0], 0, 0, this.canvas.width, this.canvas.height);
+                this.hasRenderedFirstFrame = true;
+            } catch (e) {
+                console.warn("Canvas initial drawImage error:", e);
+            }
+        }
+
         // 1. Drop stale preroll frames older than master clock (with 60ms tolerance)
         while (this.frameQueue.length > 0 && this.frameQueue[0].timestamp < masterTimeUs - 60_000) {
             if (this.frameQueue.length === 1 && (this.mediaClock.paused || this.isSeeking)) {
@@ -444,6 +454,7 @@ export class CanvasPlayerEngine {
             if (timeDiff >= -60_000 && timeDiff <= 50_000) {
                 try {
                     this.ctx.drawImage(headFrame, 0, 0, this.canvas.width, this.canvas.height);
+                    this.hasRenderedFirstFrame = true;
                 } catch (e) {
                     console.warn("Canvas drawImage error:", e);
                 }
@@ -454,6 +465,7 @@ export class CanvasPlayerEngine {
                     consumed.close();
                     try {
                         this.ctx.drawImage(this.frameQueue[0], 0, 0, this.canvas.width, this.canvas.height);
+                        this.hasRenderedFirstFrame = true;
                     } catch {
                         // Ignore draw error
                     }
@@ -461,6 +473,7 @@ export class CanvasPlayerEngine {
             } else if (this.mediaClock.paused && this.frameQueue.length === 1) {
                 try {
                     this.ctx.drawImage(headFrame, 0, 0, this.canvas.width, this.canvas.height);
+                    this.hasRenderedFirstFrame = true;
                 } catch {
                     // Ignore draw error
                 }
@@ -483,6 +496,7 @@ export class CanvasPlayerEngine {
     }
 
     async onSeeking() {
+        if (!this.isReady) return;
         this.isSeeking = true;
         this.needsKeyframe = true;
         this.seekEpoch = (this.seekEpoch || 0) + 1;
@@ -496,6 +510,7 @@ export class CanvasPlayerEngine {
     }
 
     async onSeeked() {
+        if (!this.isReady) return;
         const epoch = ++this.seekEpoch;
         this.isSeeking = true;
         this.needsKeyframe = true;
