@@ -6,7 +6,7 @@ This is the local fork of `unbe/Piped-Tesla`, deployed at `https://tesplay.sacha
 
 The backend uses the existing fridge residential egress proxy for extraction because YouTube blocks the Oracle address. Video bytes are fetched directly by the media proxy on sachabc. No paid service, Google OAuth client, YouTube API key or phone pairing is required for normal search and playback.
 
-Coolify stores `SERVICE_PASSWORD_POSTGRES`; it must be supplied to both PostgreSQL and the backend. `PUBLIC_URL` defaults to the existing hostname. The `piped-db` volume is the new Piped account database. TesPlay's old `/home/ubuntu/docker/tesplay/data` directory is separate and must be preserved for rollback. Piped does not import TesPlay accounts, credentials, libraries or watch history.
+Coolify stores `SERVICE_PASSWORD_POSTGRES`; it must be supplied to both PostgreSQL and the backend as a runtime variable. Compose allows an empty interpolation during Coolify’s frontend build, which runs before runtime secrets are available; PostgreSQL refuses to initialize without the runtime password. `PUBLIC_URL` defaults to the existing hostname. The `piped-db` volume is the new Piped account database. TesPlay's old `/home/ubuntu/docker/tesplay/data` directory is separate and must be preserved for rollback. Piped does not import TesPlay accounts, credentials, libraries or watch history.
 
 ## Local verification
 

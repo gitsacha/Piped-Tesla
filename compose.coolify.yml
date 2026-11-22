@@ -30,7 +30,7 @@ services:
       HIBERNATE__CONNECTION__DRIVER_CLASS: org.postgresql.Driver
       HIBERNATE__DIALECT: org.hibernate.dialect.PostgreSQLDialect
       HIBERNATE__CONNECTION__USERNAME: piped
-      HIBERNATE__CONNECTION__PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?Database password is required}
+      HIBERNATE__CONNECTION__PASSWORD: ${SERVICE_PASSWORD_POSTGRES:-}
     security_opt:
       - no-new-privileges:true
   media:
@@ -44,7 +44,7 @@ services:
     environment:
       POSTGRES_DB: piped
       POSTGRES_USER: piped
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?Database password is required}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:-}
     volumes:
       - piped-db:/var/lib/postgresql/data
     healthcheck:
