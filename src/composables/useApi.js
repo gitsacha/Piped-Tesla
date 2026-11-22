@@ -2,7 +2,7 @@ import { getPreferenceBoolean, getPreferenceString } from "./usePreferences.js";
 
 export function fetchJson(url, params, options) {
     if (params) {
-        url = new URL(url);
+        url = new URL(url, window.location.origin);
         for (var param in params) url.searchParams.set(param, params[param]);
     }
     return fetch(url, options).then(response => {

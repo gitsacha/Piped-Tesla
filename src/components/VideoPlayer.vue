@@ -746,7 +746,9 @@ async function loadVideo() {
             shakaLib.polyfill.installAll();
 
             const localPlayer = new shakaLib.Player();
-            await localPlayer.attach(el);
+            // Create controls before opening MediaSource, which can wait for a
+            // playback gesture on the canvas player's audio element.
+            await localPlayer.attach(el, false);
             const proxyURL = new URL(props.video.proxyUrl);
             let proxyPath = proxyURL.pathname;
             if (proxyPath.lastIndexOf("/") === proxyPath.length - 1) {

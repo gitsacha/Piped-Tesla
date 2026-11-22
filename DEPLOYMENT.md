@@ -1,0 +1,24 @@
+# Sacha deployment
+
+This is the local fork of `unbe/Piped-Tesla`, deployed at `https://tesplay.sachabc.com` on sachabc through the existing personal Coolify application. Local checkout: `/Users/sacha/src/personal/oss/piped-tesla`. `origin` is the upstream Tesla fork, `upstream` is TeamPiped/Piped, and `fork` is gitsacha/Piped-Tesla. The deployment branch is `sachabc`.
+
+`compose.coolify.yml` runs the frontend, Piped backend, stream proxy and PostgreSQL. Only the frontend is routed publicly. Nginx puts API and media requests under the same origin, so the existing Cloudflare Access session covers playback as well as browsing. It strips the browser's cookies before forwarding to the backend or media proxy. SponsorBlock remains enabled by the upstream frontend defaults.
+
+The backend uses the existing fridge residential egress proxy for extraction because YouTube blocks the Oracle address. Video bytes are fetched directly by the media proxy on sachabc. No paid service, Google OAuth client, YouTube API key or phone pairing is required for normal search and playback.
+
+Coolify stores `SERVICE_PASSWORD_POSTGRES`; it must be supplied to both PostgreSQL and the backend. `PUBLIC_URL` defaults to the existing hostname. The `piped-db` volume is the new Piped account database. TesPlay's old `/home/ubuntu/docker/tesplay/data` directory is separate and must be preserved for rollback. Piped does not import TesPlay accounts, credentials, libraries or watch history.
+
+## Local verification
+
+Use a task-private env file containing `PUBLIC_URL=http://127.0.0.1:14280` and a generated `SERVICE_PASSWORD_POSTGRES`. A local Compose override binds only `127.0.0.1:14280:8080` and sets backend `REQWEST_PROXY: null` so the local residential connection is used. An empty proxy string is invalid for the backend's native HTTP client.
+
+Run `node --test tests/use-api.test.js`, ESLint on the changed Vue/JavaScript files, and `docker compose ... up -d --build`. The inherited repository has no broader test suite. `Dockerfile.coolify` builds the production frontend and runs it as the unprivileged Nginx user. Browser verification must exercise the production image, API search, stream resolution, media ranges and SponsorBlock.
+
+## Local changes
+
+- Resolve relative API requests against the current origin; the compiled frontend uses `/api` and `/proxy` instead of somebody else's Piped instance.
+- Defer Shaka's initial MediaSource attachment until controls exist. Eager attachment can wait for a playback gesture and leave the canvas player without a Play button.
+- Hide the development-only casting controls and receiver in the production build. Upstream supplies their server only through Vite's development/preview plugin; the production stack does not pretend they work.
+- Package the standard backend and proxy alongside the fork, with PostgreSQL persistence and same-origin routing.
+
+Actual Tesla hardware and playback in Drive cannot be established by desktop browser tests. Passenger use only while the vehicle is moving.

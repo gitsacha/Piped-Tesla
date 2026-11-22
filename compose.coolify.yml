@@ -1,0 +1,58 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.coolify
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - media
+    security_opt:
+      - no-new-privileges:true
+  backend:
+    image: 1337kavin/piped@sha256:7747e19ee501c0a3afa94dd3d6e982dd4247f1babe03fb515b4a0f0b87f82b2e
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      HTTP_WORKERS: "2"
+      PROXY_PART: ${PUBLIC_URL:-https://tesplay.sachabc.com}/proxy
+      API_URL: ${PUBLIC_URL:-https://tesplay.sachabc.com}/api
+      FRONTEND_URL: ${PUBLIC_URL:-https://tesplay.sachabc.com}
+      REQWEST_PROXY: http://100.68.93.61:8888
+      SPONSORBLOCK_SERVERS: https://sponsor.ajay.app
+      DISABLE_RYD: "true"
+      DISABLE_LBRY: "true"
+      DISABLE_PUBSUB: "true"
+      HIBERNATE__CONNECTION__URL: jdbc:postgresql://postgres:5432/piped
+      HIBERNATE__CONNECTION__DRIVER_CLASS: org.postgresql.Driver
+      HIBERNATE__DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      HIBERNATE__CONNECTION__USERNAME: piped
+      HIBERNATE__CONNECTION__PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?Database password is required}
+    security_opt:
+      - no-new-privileges:true
+  media:
+    image: 1337kavin/piped-proxy@sha256:0f051d3077d03268a7da8861ed651b4cee65e4d053027a15877da674a0b1ddab
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: piped
+      POSTGRES_USER: piped
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?Database password is required}
+    volumes:
+      - piped-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piped -d piped"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  piped-db:

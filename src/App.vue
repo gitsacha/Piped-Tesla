@@ -158,7 +158,7 @@ onMounted(() => {
         });
     })();
 
-    initCastReceiver(router);
+    if (import.meta.env.DEV) initCastReceiver(router);
 });
 
 onBeforeUnmount(() => {

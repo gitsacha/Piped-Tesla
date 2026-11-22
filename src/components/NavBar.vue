@@ -42,7 +42,7 @@
         </button>
         <!-- navigation bar for large screen devices -->
         <ul class="hidden list-none *:pl-3 md:flex md:flex-1 md:justify-end">
-            <li>
+            <li v-if="isDevelopment">
                 <button
                     type="button"
                     class="flex cursor-pointer items-center gap-1.5 hover:text-red-500 dark:hover:text-red-400"
@@ -126,6 +126,7 @@
             <i18n-t keypath="titles.feed"></i18n-t>
         </router-link>
         <button
+            v-if="isDevelopment"
             type="button"
             class="cursor-pointer"
             @click="
@@ -178,6 +179,7 @@ import { useCast } from "@/composables/useCast.js";
 const router = useRouter();
 const route = useRoute();
 
+const isDevelopment = import.meta.env.DEV;
 const showCastModal = ref(false);
 const { isConnected } = useCast();
 
