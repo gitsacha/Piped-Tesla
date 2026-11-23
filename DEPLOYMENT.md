@@ -19,6 +19,7 @@ Run `node --test tests/use-api.test.js`, ESLint on the changed Vue/JavaScript fi
 - Resolve relative API requests against the current origin; the compiled frontend uses `/api` and `/proxy` instead of somebody else's Piped instance.
 - Defer Shaka's initial MediaSource attachment until controls exist. Eager attachment can wait for a playback gesture and leave the canvas player without a Play button.
 - Hide the development-only casting controls and receiver in the production build. Upstream supplies their server only through Vite's development/preview plugin; the production stack does not pretend they work.
+- Detect canvas video EOF from a short response or a rejected range. The media proxy can report the requested chunk size as the Content-Range total, which previously stopped video after the first 1 MB while audio kept advancing.
 - Package the standard backend and proxy alongside the fork, with PostgreSQL persistence and same-origin routing.
 
 Actual Tesla hardware and playback in Drive cannot be established by desktop browser tests. Passenger use only while the vehicle is moving.

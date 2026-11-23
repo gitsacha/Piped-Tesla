@@ -345,12 +345,9 @@ export class CanvasPlayerEngine {
                 throw new Error(`HTTP ${res.status} fetching video range ${startByte}-${endByte}`);
             }
 
-            const contentRange = res.headers.get("Content-Range");
-            if (contentRange) {
-                const match = contentRange.match(/\/(\d+)$/);
-                if (match) this.totalBytes = parseInt(match[1], 10);
-            }
-
+            // Piped can report the requested chunk length as the Content-Range total.
+            // Detect EOF from a short body or a rejected range instead, so a full
+            // first chunk does not stop video buffering while audio keeps playing.
             const buf = await res.arrayBuffer();
             if (currentEpoch !== this.seekEpoch || this.isDestroyed) return;
 
