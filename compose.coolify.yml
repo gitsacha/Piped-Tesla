@@ -36,6 +36,8 @@ services:
   media:
     image: 1337kavin/piped-proxy@sha256:0f051d3077d03268a7da8861ed651b4cee65e4d053027a15877da674a0b1ddab
     restart: unless-stopped
+    environment:
+      PROXY: http://100.68.93.61:8888
     security_opt:
       - no-new-privileges:true
   postgres:
