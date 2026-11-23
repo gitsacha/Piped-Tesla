@@ -23,6 +23,7 @@ Run `node --test tests/*.test.js`, ESLint on the changed Vue/JavaScript files, a
 - Package the pinned noahbroyles backend/proxy/helper/decoder stack. `Dockerfile.backend` builds commit `21f56cce9008bdcf91b7302b0cbe7d9c64de6494` from a checksummed archive and applies `deployment/backend-helpers.patch`, using a JDK HTTP client for private helper calls so the global residential Reqwest proxy cannot intercept them.
 - Route HLS child playlists at `/api/manifest/` and segments at `/videoplayback` to the media service. HTML is not cached across releases; missing hashed assets return 404.
 - Wait for IndexedDB initialization before local reads/writes. Guard interrupted playback loads so switching titles cannot restart the previous one.
+- Initialize Shaka UI only through the component; omit its automatic-scanning data attributes so it cannot create a second player over the audio element. Service-worker navigation bypasses the cached HTML shell to prevent stale references after deployments.
 
 Actual Tesla hardware and playback in Drive cannot be established by desktop browser tests. Passenger use only while the vehicle is moving.
 
@@ -39,3 +40,5 @@ The photo video `38m-0oHZpiI` played through 176 seconds with changing 720p fram
 Before cutover the production PostgreSQL database was dumped to `/home/ubuntu/docker/tesplay/rollback/piped-before-repair-20261123-184652.sql.gz`, mode 600. The existing nightly backup discovers PostgreSQL containers and Docker volumes; deployment does not prove the next scheduled backup completed. Preserve both the Piped volume and old TesPlay data.
 
 Tests cover same-origin API URLs, captured-frame lifecycle, SABR proxy routing and database readiness. Build both Dockerfiles, run focused ESLint and Docker audits. Browser acceptance must measure audio-clock progress and changing canvas pixels beyond two minutes, including pause/resume and seek. Metadata and small byte ranges alone do not establish playback.
+
+Final local image: `38m-0oHZpiI`, `FRMHOvYY6RI`, and active live `rFZHOHl-L8A` each advanced 180 seconds with changing 1280×720 pixels, readyState 4, one set of controls and zero video elements. Regular playback stayed selected throughout. Pause held the clock exactly; seeking to 240 resumed through 245.9 seconds. Screenshots were visually inspected. Eight regression tests, focused ESLint, both production builds and Docker audits passed. The recently ended `frQcPgTeeDc` broadcast still returned failing DASH segment requests while becoming an archive; its metadata and direct format ranges resolved, but sustained playback is not established.
