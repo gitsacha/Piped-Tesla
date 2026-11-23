@@ -1,7 +1,7 @@
 <template>
     <div
         ref="container"
-        data-shaka-player-container
+        data-player-container
         class="relative flex max-h-screen w-full justify-center"
         :class="{ 'max-h-[75vh] min-h-64 bg-black': !isEmbed }"
     >
@@ -9,7 +9,6 @@
             v-if="!isCanvasMode"
             ref="videoEl"
             class="w-full"
-            data-shaka-player
             :autoplay="shouldAutoPlay"
             :loop="selectedAutoLoop"
             playsinline
@@ -18,7 +17,7 @@
         <audio
             v-if="isCanvasMode"
             ref="audioEl"
-            data-shaka-player
+            data-canvas-media
             :autoplay="shouldAutoPlay"
             :loop="selectedAutoLoop"
         />
@@ -38,6 +37,9 @@
             v-t="{ path: 'player.failed', args: [error] }"
             class="absolute top-8 rounded-sm bg-black/80 p-2 text-lg backdrop-blur-sm"
         />
+        <span v-if="canvasError" class="absolute top-8 rounded-sm bg-black/80 p-2 text-lg backdrop-blur-sm">{{
+            canvasError
+        }}</span>
         <div
             v-if="showCurrentSpeed"
             class="absolute top-1/2 left-1/2 flex -translate-1/2 transform flex-col items-center gap-6 rounded-4xl bg-white/80 px-8 py-4 text-lg dark:bg-dark-700/80"
@@ -88,6 +90,7 @@ import {
     getPreferenceString,
     setPreference,
 } from "@/composables/usePreferences.js";
+import { apiUrl, fetchJson } from "@/composables/useApi.js";
 const shakaImport = import("shaka-player/dist/shaka-player.ui.js");
 const hotkeysImport = import("hotkeys-js");
 
@@ -137,6 +140,7 @@ const activeMediaEl = computed(() => {
 const lastUpdate = ref(new Date().getTime());
 const initialSeekComplete = ref(false);
 const destroying = ref(false);
+let playbackGeneration = 0;
 const inSegment = ref(false);
 const showSpeedModal = ref(false);
 const showCurrentSpeed = ref(false);
@@ -145,6 +149,7 @@ const showCurrentVolume = ref(false);
 let hideCurrentVolumeTimeout = null;
 const playbackSpeedInput = ref(null);
 const error = ref(0);
+const canvasError = ref("");
 
 let shakaLib = null;
 let playerInstance = null;
@@ -153,7 +158,14 @@ let hotkeysLib = null;
 let shakaPromise = null;
 let hotkeysPromise = null;
 let lastSelectedTextTrack = null;
+// googlevideo's SABR adapter while a SABR video is loaded (see utils/SabrUtils.js)
+let sabrAdapter = null;
+// The interval that watches that adapter's video for stalls
+let sabrStallTimer = null;
 let thumbnailVttUrl = null;
+
+// How long a SABR video may wait for media without getting any before the regular streams take over
+const SABR_STALL_TIMEOUT_MS = 15000;
 
 const shouldAutoPlay = computed(() => {
     return getPreferenceBoolean("playerAutoPlay", true) && !props.isEmbed;
@@ -406,11 +418,55 @@ function seek(time) {
     }
 }
 
-async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
+// Relabels the playback speed preset buttons with the decimal separator of the region chosen in
+// Piped's preferences, so regions that write decimals with a comma show "1,25" and the rest show
+// "1.25". Shaka 5.2 always uses a comma, and Shaka 5.3.0 always uses a period
+// (shaka-project/shaka-player@77fc1e57), so this is still needed after upgrading. The buttons are
+// rebuilt every time uiInstance.configure() runs, so call this after each call.
+function fixPlaybackRateLabels() {
+    const region = getPreferenceString("region", "US");
+    let locale;
+    try {
+        // Intl ignores a region on its own ("und-DE" formats like en-US), so pair the region with
+        // its most likely language ("de-DE"). Only the language is taken from maximize(): adding
+        // its script ("de-Latn-CH") makes Intl drop the region and fall back to the language.
+        locale = `${new Intl.Locale("und", { region }).maximize().language}-${region}`;
+    } catch {
+        locale = "en-US";
+    }
+    container.value?.querySelectorAll(".shaka-playback-rate-preset-btn").forEach(button => {
+        // Shaka stores the button's rate in data-rate. If a future Shaka stops doing that, leave
+        // Shaka's own label in place rather than showing "NaN".
+        const rate = parseFloat(button.dataset.rate);
+        if (!Number.isFinite(rate)) return;
+        // Like Shaka, show at least one decimal place ("1.0", "1.25"), and keep Latin digits so
+        // that only the separator follows the region.
+        const decimals = Math.max(1, (String(rate).split(".")[1] ?? "").length);
+        button.textContent = rate.toLocaleString(locale, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            numberingSystem: "latn",
+        });
+    });
+}
+
+function disposeSabr() {
+    clearInterval(sabrStallTimer);
+    sabrStallTimer = null;
+    sabrAdapter?.dispose();
+    sabrAdapter = null;
+}
+
+// onLoadError: when set, called instead of showing the error if the video fails to load
+// resume: when set, { time, play } to continue from instead of the start time, e.g. after switching streams
+async function setPlayerAttrs(localPlayer, el, uri, mime, shaka, onLoadError, resume) {
+    const generation = playbackGeneration;
+    const isCurrent = () => !destroying.value && generation === playbackGeneration;
     const url = "/watch?v=" + props.video.id;
 
     if (!uiInstance) {
         await destroy();
+        if (!isCurrent()) return;
         const OpenButton = class extends shaka.ui.Element {
             constructor(parent, controls) {
                 super(parent, controls);
@@ -468,6 +524,7 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
         };
 
         uiInstance.configure(config);
+        fixPlaybackRateLabels();
     }
 
     updateMarkers();
@@ -478,15 +535,32 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
     playerInstance = localPlayer;
 
     const disableVideo =
-        (isCanvasMode.value || getPreferenceBoolean("listen", false)) &&
+        !isCanvasMode.value &&
+        getPreferenceBoolean("listen", false) &&
         !props.video.livestream &&
         props.video.audioStreams?.length > 0;
 
     const prefetchLimit = Math.min(Math.max(getPreferenceNumber("prefetchLimit", 2), 0), 10);
 
     playerInstance.configure({
-        preferredVideo: preferredVideoCodecs.value.map(codec => ({ codec })),
-        preferredAudio: [{ codec: "opus" }, { codec: "mp4a" }],
+        restrictions: { maxHeight: isCanvasMode.value ? 720 : Infinity },
+        // One preference per codec, most preferred first; the other fields mean no preference
+        preferredVideo: preferredVideoCodecs.value.map(codec => ({
+            label: "",
+            role: "",
+            language: "",
+            codec,
+            hdrLevel: "",
+            layout: "",
+        })),
+        preferredAudio: ["opus", "mp4a"].map(codec => ({
+            language: "",
+            role: "",
+            label: "",
+            channelCount: 0,
+            codec,
+            spatialAudio: false,
+        })),
         manifest: {
             disableVideo: disableVideo,
         },
@@ -509,7 +583,9 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
 
     var startTime = 0;
 
-    if (time) {
+    if (resume?.time > 0) {
+        startTime = resume.time;
+    } else if (time) {
         startTime = parseTimeParam(time);
     } else if (window.db && getPreferenceBoolean("watchHistory", false)) {
         await new Promise(resolve => {
@@ -529,43 +605,37 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
         });
     }
 
+    if (!isCurrent()) return;
+    canvasPlayer?.destroy();
+    canvasError.value = "";
     if (isCanvasMode.value && canvasEl.value && audioEl.value) {
-        if (canvasPlayer) {
-            canvasPlayer.destroy();
-            canvasPlayer = null;
-        }
-        const videoStreams = props.video.videoStreams || [];
-        const mp4Streams = videoStreams.filter(
-            s =>
-                (s.mimeType === "video/mp4" || s.format === "MPEG_4" || s.format === "MP4") &&
-                (!s.codec || s.codec.startsWith("avc1") || s.codec.startsWith("av01") || s.codec.startsWith("hvc1")),
-        );
-        const targetStream =
-            mp4Streams.find(s => s.quality === "720p") ||
-            mp4Streams.find(s => s.quality === "1080p") ||
-            mp4Streams.find(s => s.quality === "480p") ||
-            mp4Streams.find(s => s.quality === "360p") ||
-            mp4Streams[0] ||
-            videoStreams.find(s => s.mimeType === "video/mp4" || s.format === "MPEG_4" || s.format === "MP4") ||
-            videoStreams[0];
-
-        if (targetStream) {
-            canvasPlayer = new CanvasPlayerEngine(canvasEl.value, audioEl.value);
-            canvasPlayer.load(targetStream.url, props.video.duration, startTime, props.video.proxyUrl).catch(e => {
-                console.error("CanvasPlayerEngine error:", e);
+        try {
+            canvasPlayer = new CanvasPlayerEngine(canvasEl.value, audioEl.value, () => {
+                canvasError.value = "Video rendering stopped. Reload to retry.";
+                el.pause();
             });
+            canvasPlayer.start();
+        } catch {
+            canvasError.value = "Video rendering is unavailable in this browser.";
+            return;
         }
     }
 
     playerInstance
-        .load(uri, null, mime)
+        // Shaka 5 resolves load() before the metadata is in, then seeks to its own start time once it is, which
+        // would undo a seek made here alone. So it gets the start time too (null means the default).
+        .load(uri, startTime > 0 ? startTime : null, mime)
         .then(async () => {
-            // Player.load()'s startTime arg does not reliably perform the
-            // initial seek; apply it here. See shaka-project/shaka-player#6241.
+            if (!isCurrent()) return;
+            // Player.load()'s startTime arg has not always performed the
+            // initial seek reliably; apply it here too. See shaka-project/shaka-player#6241.
             if (startTime > 0) {
                 el.currentTime = startTime;
                 await new Promise(resolve => el.addEventListener("seeked", resolve, { once: true }));
             }
+            if (!isCurrent()) return;
+            // Keep playing if the video was playing before, even when autoplay is off
+            if (resume?.play && el.paused) el.play().catch(() => {});
             initialSeekComplete.value = true;
             let lang = "en";
             const prefLang = getPreferenceString("hl", "en").substr(0, 2);
@@ -583,6 +653,7 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
                     ...overflowMenuButtons.slice(1),
                 ];
                 uiInstance.configure("overflowMenuButtons", newOverflowMenuButtons);
+                fixPlaybackRateLabels();
             }
 
             if (qualityConds) {
@@ -628,6 +699,7 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
                     );
                 }),
             );
+            if (!isCurrent()) return;
             el.volume = getPreferenceNumber("volume", 1);
             const rate = getPreferenceNumber("rate", 1);
             el.playbackRate = rate;
@@ -637,6 +709,11 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
             await setupThumbnailTrack();
         })
         .catch(e => {
+            if (!isCurrent() || e.code === shaka.util.Error.Code.LOAD_INTERRUPTED) return;
+            if (onLoadError) {
+                console.warn("Loading failed, trying again without SABR", e);
+                return onLoadError();
+            }
             console.error(e);
             error.value = e.code;
         });
@@ -653,6 +730,8 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka) {
 }
 
 async function loadVideo() {
+    const generation = ++playbackGeneration;
+    const isCurrent = () => !destroying.value && generation === playbackGeneration;
     initialSeekComplete.value = false;
 
     if (canvasPlayer) {
@@ -735,27 +814,149 @@ async function loadVideo() {
         uri = props.video.hls;
         mime = "application/x-mpegURL";
     } else {
-        const stream = props.video.videoStreams.findLast(stream => stream.codec == null);
-        uri = stream?.url;
-        mime = stream?.codec ? `video/mp4; codecs="${stream.codec}"` : 'video/mp4; codecs="avc1.42E01E"';
+        // There may be none when the video only plays over SABR
+        uri = props.video.videoStreams.findLast(stream => stream.codec == null)?.url;
+        mime = "video/mp4";
     }
+
+    // Prefer regular streams: YouTube may only grant SABR a short cold-start
+    // allowance when it does not accept the helper's attestation token.
+    const hasRegularVideo = !!(props.video.dash || props.video.hls || props.video.videoStreams?.length);
+    const audioOnly = !isCanvasMode.value && getPreferenceBoolean("listen", false);
+    const hasUsableRegularStream = !!uri && (hasRegularVideo || audioOnly);
+    const sabr =
+        !hasUsableRegularStream &&
+        !props.video.livestream &&
+        props.video.sabr &&
+        MseSupport &&
+        !getPreferenceBoolean("preferHls", false) &&
+        getPreferenceBoolean("sabr", true)
+            ? props.video.sabr
+            : null;
+
+    // Loaded on demand, so googlevideo isn't downloaded unless it's needed
+    const sabrUtils = sabr ? await import("../utils/SabrUtils.js") : null;
+
+    // The regular streams stay as a fallback in case SABR doesn't work out
+    const fallbackUri = hasUsableRegularStream ? uri : null;
+    const fallbackMime = mime;
+
+    if (sabr) {
+        uri = sabrUtils.generateSabrManifestUri(sabr, props.video.duration);
+        mime = "application/dash+xml";
+    }
+
+    const startPlayback = player => {
+        if (!isCurrent()) return;
+        // Whatever played before may have had an adapter of its own
+        disposeSabr();
+
+        if (!sabr) return setPlayerAttrs(player, el, uri, mime, shakaLib);
+
+        // Without regular streams there is nothing to fall back to, so just show the error.
+        // Only fall back once: loading the regular streams interrupts a SABR load that is still running,
+        // and that load's error handler would otherwise start the fallback a second time.
+        let fellBack = false;
+        const fallback = fallbackUri
+            ? () => {
+                  if (fellBack || !isCurrent() || sabrAdapter !== adapter) return;
+                  fellBack = true;
+                  // Continue where SABR left off, unless it never got past loading
+                  const resume = { time: initialSeekComplete.value ? el.currentTime : 0, play: !el.paused };
+                  disposeSabr();
+                  return setPlayerAttrs(player, el, fallbackUri, fallbackMime, shakaLib, undefined, resume);
+              }
+            : null;
+
+        const videoId = props.video.id;
+        let adapter = null;
+
+        const onSabrFailure = reason => {
+            // Only if this video's adapter is still the one in use
+            if (!isCurrent() || sabrAdapter !== adapter) return;
+            console.warn(`Not using SABR: ${reason}`);
+            if (fallback) return fallback();
+            disposeSabr();
+            player.unload();
+            error.value = shakaLib.util.Error.Code.BAD_HTTP_STATUS;
+        };
+
+        adapter = sabrUtils.attachSabrAdapter(
+            shakaLib,
+            player,
+            sabr,
+            () => fetchJson(apiUrl() + "/streams/" + videoId).then(streams => streams.sabr),
+            onSabrFailure,
+            props.video.proxyUrl,
+        );
+        sabrAdapter = adapter;
+
+        // When googlevideo keeps answering without media but also without an error, Shaka retries forever
+        // and the spinner never goes away. So give up on SABR when the video has been waiting for media
+        // (still loading, seeking or playing, but without enough data to go on) for SABR_STALL_TIMEOUT_MS,
+        // with no new media buffered and no progress in playback.
+        let lastProgress = Date.now();
+        let lastBuffered = 0;
+        let lastTime = el.currentTime;
+        sabrStallTimer = setInterval(() => {
+            let buffered = 0;
+            for (let i = 0; i < el.buffered.length; i++) buffered += el.buffered.end(i) - el.buffered.start(i);
+
+            const waiting =
+                !el.ended &&
+                (!initialSeekComplete.value || el.seeking || !el.paused) &&
+                el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA;
+
+            if (!waiting || buffered > lastBuffered || el.currentTime !== lastTime) lastProgress = Date.now();
+            lastBuffered = buffered;
+            lastTime = el.currentTime;
+
+            if (Date.now() - lastProgress >= SABR_STALL_TIMEOUT_MS)
+                onSabrFailure(`no media arrived for ${SABR_STALL_TIMEOUT_MS / 1000} s`);
+        }, 1000);
+
+        setPlayerAttrs(player, el, uri, mime, shakaLib, fallback);
+    };
 
     if (noPrevPlayer)
         shakaPromise.then(async () => {
-            if (destroying.value) return;
+            if (!isCurrent()) return;
             shakaLib.polyfill.installAll();
 
             const localPlayer = new shakaLib.Player();
             // Create controls before opening MediaSource, which can wait for a
             // playback gesture on the canvas player's audio element.
             await localPlayer.attach(el, false);
+            if (!isCurrent()) {
+                await localPlayer.destroy();
+                return;
+            }
             const proxyURL = new URL(props.video.proxyUrl);
             let proxyPath = proxyURL.pathname;
             if (proxyPath.lastIndexOf("/") === proxyPath.length - 1) {
                 proxyPath = proxyPath.substring(0, proxyPath.length - 1);
             }
 
+            // YouTube's live HLS audio is packed AAC (an ID3 timestamp tag plus ADTS frames), but
+            // its segments are named seg.ts. Shaka trusts the extension, treats the audio as
+            // MPEG-TS, never offsets its timestamps onto the video's timeline, and playback
+            // stalls on the poster forever. Rename those segments to seg.aac in the media
+            // playlists (YouTube's audio segment URLs contain /goap/, video ones /govp/) so Shaka
+            // handles them as packed audio, and rename them back in the request filter below so
+            // googlevideo still gets the URL it expects.
+            const youtubeAudioSegmentTs = /^(.*\/goap\/.*\/file\/seg)\.ts(?=\?|$)/gm;
+            const youtubeAudioSegmentAac = /(\/goap\/.*\/file\/seg)\.aac(?=\?|$)/;
+            localPlayer.getNetworkingEngine().registerResponseFilter((type, response) => {
+                if (type !== shakaLib.net.NetworkingEngine.RequestType.MANIFEST) return;
+                const text = new TextDecoder().decode(response.data);
+                if (!text.startsWith("#EXTM3U")) return;
+                const renamed = text.replace(youtubeAudioSegmentTs, "$1.aac");
+                if (renamed !== text) response.data = new TextEncoder().encode(renamed).buffer;
+            });
+
             localPlayer.getNetworkingEngine().registerRequestFilter((_type, request) => {
+                // Undo the seg.aac rename from the response filter above.
+                request.uris[0] = request.uris[0].replace(youtubeAudioSegmentAac, "$1.ts");
                 const uri = request.uris[0];
                 var url = new URL(uri);
                 const headers = request.headers;
@@ -782,9 +983,9 @@ async function loadVideo() {
             localPlayer.configure("streaming.bufferingGoal", Math.max(getPreferenceNumber("bufferGoal", 10), 10));
             localPlayer.configure("streaming.bufferBehind", 300);
 
-            setPlayerAttrs(localPlayer, el, uri, mime, shakaLib);
+            startPlayback(localPlayer);
         });
-    else setPlayerAttrs(playerInstance, el, uri, mime, shakaLib);
+    else startPlayback(playerInstance);
 
     if (noPrevPlayer) {
         el.addEventListener("loadeddata", () => {
@@ -830,6 +1031,7 @@ async function destroy(hotkeys) {
     }
     const oldUi = uiInstance;
     const oldPlayer = playerInstance;
+    if (oldUi || oldPlayer) disposeSabr();
     uiInstance = undefined;
     playerInstance = undefined;
 
@@ -1102,7 +1304,7 @@ defineExpose({
    it wins over any layered rule, and !important to override the UA focus ring
    if specificity gets shadowed. */
 video.shaka-video:focus,
-video[data-shaka-player]:focus {
+video:focus {
     outline: none !important;
 }
 </style>

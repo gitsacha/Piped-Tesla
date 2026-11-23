@@ -1,27 +1,34 @@
 import { fetchJson, apiUrl, authApiUrl, getAuthToken, isAuthenticated } from "./useApi.js";
 
 export async function getLocalPlaylist(playlistId) {
+    await window.dbReady;
+    if (!window.db) return null;
     return await new Promise(resolve => {
         var tx = window.db.transaction("playlists", "readonly");
         var store = tx.objectStore("playlists");
         const req = store.openCursor(playlistId);
         let playlist = null;
         req.onsuccess = e => {
-            playlist = e.target.result.value;
+            playlist = e.target.result?.value;
+            if (!playlist) return resolve(null);
             playlist.videos = JSON.parse(playlist.videoIds).length;
             resolve(playlist);
         };
     });
 }
 
-export function createOrUpdateLocalPlaylist(playlist) {
+export async function createOrUpdateLocalPlaylist(playlist) {
+    await window.dbReady;
+    if (!window.db) throw new Error("Local storage is unavailable. Reload and try again.");
     var tx = window.db.transaction("playlists", "readwrite");
     var store = tx.objectStore("playlists");
     store.put(playlist);
 }
 
 // needs to handle both, streamInfo items and streams items
-export function createLocalPlaylistVideo(videoId, videoInfo) {
+export async function createLocalPlaylistVideo(videoId, videoInfo) {
+    await window.dbReady;
+    if (!window.db) throw new Error("Local storage is unavailable. Reload and try again.");
     if (videoInfo === undefined || videoId === null || videoInfo?.error) return;
 
     var tx = window.db.transaction("playlist_videos", "readwrite");
@@ -43,6 +50,8 @@ export function createLocalPlaylistVideo(videoId, videoInfo) {
 }
 
 export async function getLocalPlaylistVideo(videoId) {
+    await window.dbReady;
+    if (!window.db) return;
     return await new Promise(resolve => {
         var tx = window.db.transaction("playlist_videos", "readonly");
         var store = tx.objectStore("playlist_videos");
@@ -55,6 +64,7 @@ export async function getLocalPlaylistVideo(videoId) {
 
 export async function getPlaylists() {
     if (!isAuthenticated()) {
+        await window.dbReady;
         if (!window.db) return [];
         return await new Promise(resolve => {
             let playlists = [];
@@ -85,6 +95,7 @@ export async function getPlaylists() {
 export async function getPlaylist(playlistId) {
     if (playlistId.startsWith("local")) {
         const playlist = await getLocalPlaylist(playlistId);
+        if (!playlist) throw new Error("Local playlist is unavailable.");
         const videoIds = JSON.parse(playlist.videoIds);
         const videosFuture = videoIds.map(videoId => getLocalPlaylistVideo(videoId));
         playlist.relatedStreams = (await Promise.all(videosFuture)).filter(video => video !== undefined);
@@ -98,7 +109,7 @@ export async function createPlaylist(name) {
     if (!isAuthenticated()) {
         const uuid = crypto.randomUUID();
         const playlistId = `local-${uuid}`;
-        createOrUpdateLocalPlaylist({
+        await createOrUpdateLocalPlaylist({
             playlistId: playlistId,
             // remapping needed for the playlists page
             id: playlistId,
@@ -125,6 +136,7 @@ export async function createPlaylist(name) {
 export async function deletePlaylist(playlistId) {
     if (!isAuthenticated()) {
         const playlist = await getLocalPlaylist(playlistId);
+        if (!playlist) throw new Error("Local playlist is unavailable.");
         var tx = window.db.transaction("playlists", "readwrite");
         var store = tx.objectStore("playlists");
         store.delete(playlistId);
@@ -158,8 +170,9 @@ export async function deletePlaylist(playlistId) {
 export async function renamePlaylist(playlistId, newName) {
     if (!isAuthenticated()) {
         const playlist = await getLocalPlaylist(playlistId);
+        if (!playlist) throw new Error("Local playlist is unavailable.");
         playlist.name = newName;
-        createOrUpdateLocalPlaylist(playlist);
+        await createOrUpdateLocalPlaylist(playlist);
         return { message: "ok" };
     }
 
@@ -179,8 +192,9 @@ export async function renamePlaylist(playlistId, newName) {
 export async function changePlaylistDescription(playlistId, newDescription) {
     if (!isAuthenticated()) {
         const playlist = await getLocalPlaylist(playlistId);
+        if (!playlist) throw new Error("Local playlist is unavailable.");
         playlist.description = newDescription;
-        createOrUpdateLocalPlaylist(playlist);
+        await createOrUpdateLocalPlaylist(playlist);
         return { message: "ok" };
     }
 
@@ -200,16 +214,17 @@ export async function changePlaylistDescription(playlistId, newDescription) {
 export async function addVideosToPlaylist(playlistId, videoIds, videoInfos) {
     if (!isAuthenticated()) {
         const playlist = await getLocalPlaylist(playlistId);
+        if (!playlist) throw new Error("Local playlist is unavailable.");
         const currentVideoIds = JSON.parse(playlist.videoIds);
         currentVideoIds.push(...videoIds);
         playlist.videoIds = JSON.stringify(currentVideoIds);
         let streamInfos =
             videoInfos ?? (await Promise.all(videoIds.map(videoId => fetchJson(apiUrl() + "/streams/" + videoId))));
         playlist.thumbnail = streamInfos[0].thumbnail || streamInfos[0].thumbnailUrl;
-        createOrUpdateLocalPlaylist(playlist);
+        await createOrUpdateLocalPlaylist(playlist);
         for (let i in videoIds) {
             if (streamInfos[i].error) continue;
-            createLocalPlaylistVideo(videoIds[i], streamInfos[i]);
+            await createLocalPlaylistVideo(videoIds[i], streamInfos[i]);
         }
         return { message: "ok" };
     }
@@ -230,11 +245,12 @@ export async function addVideosToPlaylist(playlistId, videoIds, videoInfos) {
 export async function removeVideoFromPlaylist(playlistId, index) {
     if (!isAuthenticated()) {
         const playlist = await getLocalPlaylist(playlistId);
+        if (!playlist) throw new Error("Local playlist is unavailable.");
         const videoIds = JSON.parse(playlist.videoIds);
         videoIds.splice(index, 1);
         playlist.videoIds = JSON.stringify(videoIds);
         if (videoIds.length == 0) playlist.thumbnail = import.meta.env.VITE_PIPED_PROXY + "/?host=i.ytimg.com";
-        createOrUpdateLocalPlaylist(playlist);
+        await createOrUpdateLocalPlaylist(playlist);
         return { message: "ok" };
     }
 

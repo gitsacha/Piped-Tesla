@@ -1,0 +1,108 @@
+--- a/src/main/java/me/kavin/piped/utils/SabrHelper.java
++++ b/src/main/java/me/kavin/piped/utils/SabrHelper.java
+@@ -11,7 +11,6 @@
+ import org.schabi.newpipe.extractor.localization.Localization;
+ import org.schabi.newpipe.extractor.services.youtube.InnertubeClientRequestInfo;
+ import org.schabi.newpipe.extractor.utils.JsonUtils;
+-import rocks.kavin.reqwest4j.ReqwestUtils;
+ 
+ import java.nio.charset.StandardCharsets;
+ import java.util.List;
+@@ -72,9 +71,10 @@
+                 headers, YOUTUBEI_V1_URL, null, false);
+ 
+         // The URL has to be deciphered by the same player version the request says it uses
+-        final int signatureTimestamp = RequestUtils.sendGetJson(Constants.PLAYER_N_DECODER_URL + "/sts")
++        final byte[] signatureTimestamp = HelperHttpClient.fetch(Constants.PLAYER_N_DECODER_URL + "/sts", "GET", null, Map.of())
+                 .get(N_DECODER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+-                .get("signatureTimestamp").asInt();
++                .body();
++        final int signatureTimestampValue = mapper.readTree(signatureTimestamp).get("signatureTimestamp").asInt();
+ 
+         final JsonBuilder<JsonObject> builder = prepareJsonBuilder(localization, contentCountry, requestInfo, null)
+                 .value(VIDEO_ID, videoId)
+@@ -83,7 +83,7 @@
+                 .object("playbackContext")
+                 .object("contentPlaybackContext")
+                 // Ties the response to the player version that deciphers the n parameter below
+-                .value("signatureTimestamp", signatureTimestamp)
++                .value("signatureTimestamp", signatureTimestampValue)
+                 .value("referer", "https://www.youtube.com/watch?v=" + videoId)
+                 .end()
+                 .end();
+@@ -124,7 +124,7 @@
+         });
+ 
+         // Without a deciphered n parameter, googlevideo answers SABR requests with a 403
+-        final String deobfuscatedUrl = decipher(streamingUrl, signatureTimestamp);
++        final String deobfuscatedUrl = decipher(streamingUrl, signatureTimestampValue);
+ 
+         final JsonArray adaptiveFormats = streamingData.getArray("adaptiveFormats");
+         final List<Map<String, Object>> formats = adaptiveFormats.stream()
+@@ -156,13 +156,13 @@
+      * Has the player n decoder run YouTube's player code on the n parameter of {@code url}.
+      */
+     private static String decipher(String url, int signatureTimestamp) throws Exception {
+-        var response = ReqwestUtils.fetch(Constants.PLAYER_N_DECODER_URL + "/decipher", "POST",
++        var response = HelperHttpClient.fetch(Constants.PLAYER_N_DECODER_URL + "/decipher", "POST",
+                 mapper.writeValueAsBytes(mapper.createObjectNode()
+                         .put("url", url)
+                         .put("signatureTimestamp", signatureTimestamp)),
+                 Map.of("Content-Type", "application/json")).get(N_DECODER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+ 
+-        if (response.status() != 200)
++        if (response.statusCode() != 200)
+             throw new RuntimeException("Player n decoder could not decipher the streaming URL: " + new String(response.body(), StandardCharsets.UTF_8));
+ 
+         return mapper.readTree(response.body()).get("url").asText();
+--- a/src/main/java/me/kavin/piped/utils/BgPoTokenProvider.java
++++ b/src/main/java/me/kavin/piped/utils/BgPoTokenProvider.java
+@@ -4,7 +4,6 @@
+ import org.jetbrains.annotations.Nullable;
+ import org.schabi.newpipe.extractor.services.youtube.PoTokenProvider;
+ import org.schabi.newpipe.extractor.services.youtube.PoTokenResult;
+-import rocks.kavin.reqwest4j.ReqwestUtils;
+ 
+ import java.util.Map;
+ import java.util.Queue;
+@@ -60,7 +59,7 @@
+      * @return the token, or null if the bg-helper did not return one
+      */
+     public static @Nullable String generatePoToken(String bgHelperUrl, String identifier) throws Exception {
+-        return ReqwestUtils.fetch(bgHelperUrl + "/generate", "POST", mapper.writeValueAsBytes(mapper.createObjectNode().put(
++        return HelperHttpClient.fetch(bgHelperUrl + "/generate", "POST", mapper.writeValueAsBytes(mapper.createObjectNode().put(
+                 "visitorData", identifier
+         )), Map.of(
+                 "Content-Type", "application/json"
+--- /dev/null
++++ b/src/main/java/me/kavin/piped/utils/HelperHttpClient.java
+@@ -0,0 +1,29 @@
++package me.kavin.piped.utils;
++
++import java.net.URI;
++import java.net.http.HttpClient;
++import java.net.http.HttpRequest;
++import java.net.http.HttpResponse;
++import java.time.Duration;
++import java.util.Map;
++import java.util.concurrent.CompletableFuture;
++
++/** Private helper calls must bypass the residential proxy used for YouTube requests. */
++final class HelperHttpClient {
++    private static final HttpClient CLIENT = HttpClient.newBuilder()
++            .connectTimeout(Duration.ofSeconds(10)).build();
++
++    static CompletableFuture<HttpResponse<byte[]>> fetch(String url, String method, byte[] body,
++                                                          Map<String, String> headers) {
++        var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30));
++        headers.forEach(request::header);
++        request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
++                : HttpRequest.BodyPublishers.ofByteArray(body));
++        return CLIENT.sendAsync(request.build(), HttpResponse.BodyHandlers.ofByteArray())
++                .thenApply(response -> {
++                    if (response.statusCode() != 200)
++                        throw new IllegalStateException("Helper returned HTTP " + response.statusCode());
++                    return response;
++                });
++    }
++}

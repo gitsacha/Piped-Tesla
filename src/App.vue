@@ -91,6 +91,11 @@ watch(
     { immediate: true },
 );
 
+let resolveDatabaseReady;
+window.dbReady = new Promise(resolve => {
+    resolveDatabaseReady = resolve;
+});
+
 onMounted(() => {
     darkModePreference.addEventListener("change", handlePreferredColorSchemeChange);
 
@@ -143,8 +148,15 @@ onMounted(() => {
         };
         request.onsuccess = e => {
             window.db = e.target.result;
+            window.db.onversionchange = () => {
+                window.db.close();
+                window.db = null;
+            };
+            resolveDatabaseReady(window.db);
         };
-    } else console.log("This browser doesn't support IndexedDB");
+        request.onerror = () => resolveDatabaseReady(null);
+        request.onblocked = () => resolveDatabaseReady(null);
+    } else resolveDatabaseReady(null);
 
     (async function () {
         const initialLocale =

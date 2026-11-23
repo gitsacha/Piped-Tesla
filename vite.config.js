@@ -158,8 +158,11 @@ export default defineConfig({
                 type: "module",
             },
             workbox: {
+                // A cached HTML shell can reference chunks removed by a deployment.
+                // Navigation must get the current shell from Nginx.
+                navigateFallback: null,
                 globPatterns: [
-                    "**/*.{css,html}",
+                    "**/*.css",
                     "**/[A-Z]*.js",
                     "**/index*.js",
                     "**/shaka-player*.js",

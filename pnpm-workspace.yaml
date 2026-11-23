@@ -2,3 +2,5 @@ allowBuilds:
   core-js: false
   esbuild: true
   vue-demi: false
+patchedDependencies:
+  shaka-player@5.2.12: patches/shaka-player@5.2.12.patch

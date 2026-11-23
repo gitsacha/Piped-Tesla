@@ -1,0 +1,14 @@
+FROM eclipse-temurin:21-jdk@sha256:8ad118b146aa92da815b576441acd6b42b38236797ad0b6edc8c200b85bb0734 AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl patch \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://codeload.github.com/noahbroyles/Piped-Backend/tar.gz/21f56cce9008bdcf91b7302b0cbe7d9c64de6494 -o /tmp/backend.tar.gz \
+    && echo '9788967a5085b33f85c867e013e2faf4b028b1edcbc2eb50f2c5048006623318  /tmp/backend.tar.gz' | sha256sum -c - \
+    && tar -xzf /tmp/backend.tar.gz --strip-components=1 -C /app \
+    && rm /tmp/backend.tar.gz
+COPY deployment/backend-helpers.patch /tmp/backend-helpers.patch
+RUN patch -p1 < /tmp/backend-helpers.patch
+RUN --mount=type=cache,target=/root/.gradle/caches ./gradlew --no-daemon shadowJar
+
+FROM ghcr.io/noahbroyles/piped-backend@sha256:bda247cb3412e57b6288af6249438cfa7d59ecc7c30048e09e62ac4e507185d6
+COPY --from=build /app/build/libs/piped-1.0-all.jar /app/piped.jar

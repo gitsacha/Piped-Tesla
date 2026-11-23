@@ -1,4 +1,6 @@
 export async function getChannelGroups() {
+    await window.dbReady;
+    if (!window.db) return [];
     return new Promise(resolve => {
         let channelGroups = [];
         var tx = window.db.transaction("channel_groups", "readonly");
@@ -20,7 +22,9 @@ export async function getChannelGroups() {
     });
 }
 
-export function createOrUpdateChannelGroup(group) {
+export async function createOrUpdateChannelGroup(group) {
+    await window.dbReady;
+    if (!window.db) throw new Error("Local storage is unavailable. Reload and try again.");
     var tx = window.db.transaction("channel_groups", "readwrite");
     var store = tx.objectStore("channel_groups");
     store.put({
@@ -29,7 +33,9 @@ export function createOrUpdateChannelGroup(group) {
     });
 }
 
-export function deleteChannelGroup(groupName) {
+export async function deleteChannelGroup(groupName) {
+    await window.dbReady;
+    if (!window.db) throw new Error("Local storage is unavailable. Reload and try again.");
     var tx = window.db.transaction("channel_groups", "readwrite");
     var store = tx.objectStore("channel_groups");
     store.delete(groupName);

@@ -10,7 +10,9 @@ services:
     security_opt:
       - no-new-privileges:true
   backend:
-    image: 1337kavin/piped@sha256:7747e19ee501c0a3afa94dd3d6e982dd4247f1babe03fb515b4a0f0b87f82b2e
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -22,6 +24,8 @@ services:
       API_URL: ${PUBLIC_URL:-https://tesplay.sachabc.com}/api
       FRONTEND_URL: ${PUBLIC_URL:-https://tesplay.sachabc.com}
       REQWEST_PROXY: http://100.68.93.61:8888
+      BG_HELPER_URL: http://bg-helper:3000
+      PLAYER_N_DECODER_URL: http://player-decoder:3001
       SPONSORBLOCK_SERVERS: https://sponsor.ajay.app
       DISABLE_RYD: "true"
       DISABLE_LBRY: "true"
@@ -34,10 +38,27 @@ services:
     security_opt:
       - no-new-privileges:true
   media:
-    image: 1337kavin/piped-proxy@sha256:0f051d3077d03268a7da8861ed651b4cee65e4d053027a15877da674a0b1ddab
+    image: ghcr.io/noahbroyles/piped-proxy@sha256:fff997355bab19ad8c5ec7139e594e194546ffc06644b9011f427ee56f830983
     restart: unless-stopped
     environment:
       PROXY: http://100.68.93.61:8888
+      PROXY_PUBLIC_URL: ${PUBLIC_URL:-https://tesplay.sachabc.com}/proxy
+    security_opt:
+      - no-new-privileges:true
+  bg-helper:
+    image: ghcr.io/noahbroyles/bg-helper-server@sha256:de1385ed40ab921ab108f8eb7ae4cdb785af7f9beed46a8316225c852049ad2c
+    restart: unless-stopped
+    environment:
+      HTTPS_PROXY: http://100.68.93.61:8888
+      HTTP_PROXY: http://100.68.93.61:8888
+    security_opt:
+      - no-new-privileges:true
+  player-decoder:
+    image: ghcr.io/noahbroyles/piped-player-n-decoder@sha256:b7d0aa5b5ac47d3eff62a563db1d52c84ecc05721e3dab7f6d89d147650584eb
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
   postgres:
