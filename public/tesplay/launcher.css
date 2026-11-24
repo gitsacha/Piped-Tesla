@@ -22,6 +22,7 @@ h1 { margin: 0; font-size: clamp(2.3rem, 6vw, 4.5rem); line-height: 1; letter-sp
 .apps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: clamp(10px, 1.5vw, 18px); }
 .tile {
   display: flex;
+  width: 100%;
   min-width: 0;
   min-height: 128px;
   aspect-ratio: 1.24;

@@ -168,7 +168,7 @@ export default defineConfig({
                     "**/shaka-player*.js",
                     "manifest.webmanifest",
                 ],
-                globIgnores: ["**/*-legacy-*.js"],
+                globIgnores: ["**/*-legacy-*.js", "tesplay/**"],
                 runtimeCaching: [
                     {
                         urlPattern: /https:\/\/[a-zA-Z./0-9_]*\.(?:otf|ttf)/i,
