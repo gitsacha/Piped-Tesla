@@ -189,6 +189,7 @@
                             />
                             <!-- listen / watch toggle -->
                             <router-link
+                                v-if="!video.livestream && video.audioStreams?.length"
                                 :to="toggleListenUrl"
                                 :aria-label="(isListening ? 'Watch ' : 'Listen to ') + video.title"
                                 :title="(isListening ? 'Watch ' : 'Listen to ') + video.title"
@@ -198,6 +199,7 @@
                                     <i-fa6-solid-tv v-if="isListening" class="mx-1.5" />
                                     <i-fa6-solid-headphones v-else class="mx-1.5" />
                                 </span>
+                                <span class="pr-2">{{ isListening ? "Watch video" : "Audio only" }}</span>
                             </router-link>
                         </div>
                     </div>
@@ -374,6 +376,7 @@ import LoadingIndicatorPage from "./LoadingIndicatorPage.vue";
 import ToastComponent from "./ToastComponent.vue";
 import UiCheckbox from "./ui/Checkbox.vue";
 import { parseTimeParam } from "@/utils/Misc";
+import { isListeningTo } from "@/utils/playbackMode.js";
 import { purifyHTML, rewriteDescription } from "@/utils/HtmlUtils";
 import { fetchJson, apiUrl } from "@/composables/useApi.js";
 import {
@@ -426,9 +429,7 @@ const counter = ref(0);
 const theaterMode = ref(false);
 let loading = false;
 
-const isListening = computed(() => {
-    return getPreferenceBoolean("listen", false);
-});
+const isListening = computed(() => isListeningTo(video.value));
 
 const selectedAutoPlayEnabled = computed(() => {
     return Number(selectedAutoPlay.value) >= 1;

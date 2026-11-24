@@ -6,7 +6,7 @@
         :class="{ 'max-h-[75vh] min-h-64 bg-black': !isEmbed }"
     >
         <video
-            v-if="!isCanvasMode"
+            v-if="!usesAudioElement"
             ref="videoEl"
             class="w-full"
             :autoplay="shouldAutoPlay"
@@ -15,12 +15,15 @@
         />
         <canvas v-if="isCanvasMode" ref="canvasEl" class="aspect-video size-full max-h-[75vh] object-contain" />
         <audio
-            v-if="isCanvasMode"
+            v-if="usesAudioElement"
             ref="audioEl"
-            data-canvas-media
+            :data-canvas-media="isCanvasMode ? '' : undefined"
             :autoplay="shouldAutoPlay"
             :loop="selectedAutoLoop"
         />
+        <span v-if="audioSelection" class="pointer-events-none absolute top-8 text-sm text-white/80">
+            {{ audioSelection }}
+        </span>
         <button
             v-if="inSegment"
             class="skip-segment-button"
@@ -83,6 +86,7 @@ import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { parseTimeParam } from "@/utils/Misc";
 import { CanvasPlayerEngine } from "@/utils/canvasPlayer.js";
+import { isListeningTo, isTeslaBrowser, selectAudioStream } from "@/utils/playbackMode.js";
 import ModalComponent from "./ModalComponent.vue";
 import {
     getPreferenceBoolean,
@@ -123,18 +127,20 @@ const canvasEl = ref(null);
 const audioEl = ref(null);
 let canvasPlayer = null;
 
-const isTeslaBrowser = typeof navigator !== "undefined" && navigator.userAgent.includes("Tesla");
+const audioOnly = computed(() => isListeningTo(props.video));
+const audioSelection = ref("");
 const isCanvasMode = computed(() => {
     return (
-        route.query.tesla === "true" ||
-        route.query.canvas === "true" ||
-        getPreferenceBoolean("teslaCanvasMode", false) ||
-        isTeslaBrowser
+        !audioOnly.value &&
+        (route.query.tesla === "true" ||
+            route.query.canvas === "true" ||
+            getPreferenceBoolean("teslaCanvasMode", false))
     );
 });
+const usesAudioElement = computed(() => audioOnly.value || isCanvasMode.value);
 
 const activeMediaEl = computed(() => {
-    return isCanvasMode.value ? audioEl.value : videoEl.value;
+    return usesAudioElement.value ? audioEl.value : videoEl.value;
 });
 
 const lastUpdate = ref(new Date().getTime());
@@ -184,6 +190,10 @@ const preferredVideoCodecs = computed(() => {
     if (el.canPlayType('video/mp4; codecs="avc1.4d401f"') !== "" && enabledCodecs.includes("avc"))
         preferredVideoCodecs.push("avc1");
 
+    // Favor the widely supported H.264 decode path on Tesla for standard video.
+    if (isTeslaBrowser() && !isCanvasMode.value && preferredVideoCodecs.includes("avc1")) {
+        return ["avc1", ...preferredVideoCodecs.filter(codec => codec !== "avc1")];
+    }
     return preferredVideoCodecs;
 });
 
@@ -534,11 +544,7 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka, onLoadError, re
 
     playerInstance = localPlayer;
 
-    const disableVideo =
-        !isCanvasMode.value &&
-        getPreferenceBoolean("listen", false) &&
-        !props.video.livestream &&
-        props.video.audioStreams?.length > 0;
+    const disableVideo = audioOnly.value;
 
     const prefetchLimit = Math.min(Math.max(getPreferenceNumber("prefetchLimit", 2), 0), 10);
 
@@ -629,7 +635,7 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka, onLoadError, re
             if (!isCurrent()) return;
             // Player.load()'s startTime arg has not always performed the
             // initial seek reliably; apply it here too. See shaka-project/shaka-player#6241.
-            if (startTime > 0) {
+            if (startTime > 0 && Math.abs(el.currentTime - startTime) > 0.25) {
                 el.currentTime = startTime;
                 await new Promise(resolve => el.addEventListener("seeked", resolve, { once: true }));
             }
@@ -684,7 +690,7 @@ async function setPlayerAttrs(localPlayer, el, uri, mime, shaka, onLoadError, re
                         }
                     });
 
-                playerInstance.selectVariantTrack(bestStream, true);
+                if (bestStream) playerInstance.selectVariantTrack(bestStream, true);
             }
 
             await Promise.all(
@@ -744,7 +750,7 @@ async function loadVideo() {
     const el = activeMediaEl.value;
     if (!el) return;
 
-    if (!isCanvasMode.value) {
+    if (!usesAudioElement.value) {
         el.setAttribute("poster", props.video.thumbnailUrl);
     }
 
@@ -761,8 +767,30 @@ async function loadVideo() {
 
     var uri;
     var mime;
+    audioSelection.value = "";
+    const audioStream = audioOnly.value
+        ? selectAudioStream(
+              props.video.audioStreams,
+              type => el.canPlayType(type) || window.MediaSource?.isTypeSupported(type),
+              getPreferenceString("hl", "en").split("-")[0],
+          )
+        : null;
 
-    if (props.video.livestream) {
+    if (audioStream) {
+        const audioType = `${audioStream.mimeType}; codecs="${audioStream.codec}"`;
+        if (window.MediaSource?.isTypeSupported(audioType) && audioStream.indexEnd > 0) {
+            const { generate_dash_file_from_formats } = await import("../utils/DashUtils.js");
+            const dash = generate_dash_file_from_formats([audioStream], props.video.duration);
+            uri = "data:application/dash+xml;charset=utf-8;base64," + btoa(dash);
+            mime = "application/dash+xml";
+        } else {
+            uri = audioStream.url;
+            mime = audioStream.mimeType;
+        }
+        const codec =
+            audioStream.codec === "opus" ? "Opus" : audioStream.codec.startsWith("mp4a") ? "AAC" : audioStream.codec;
+        audioSelection.value = `Audio only · ${codec} · ${Math.round(audioStream.bitrate / 1000)} kbps`;
+    } else if (props.video.livestream) {
         uri = props.video.hls;
         mime = "application/x-mpegURL";
     } else if (
@@ -822,8 +850,7 @@ async function loadVideo() {
     // Prefer regular streams: YouTube may only grant SABR a short cold-start
     // allowance when it does not accept the helper's attestation token.
     const hasRegularVideo = !!(props.video.dash || props.video.hls || props.video.videoStreams?.length);
-    const audioOnly = !isCanvasMode.value && getPreferenceBoolean("listen", false);
-    const hasUsableRegularStream = !!uri && (hasRegularVideo || audioOnly);
+    const hasUsableRegularStream = !!uri && (hasRegularVideo || audioOnly.value);
     const sabr =
         !hasUsableRegularStream &&
         !props.video.livestream &&
@@ -989,7 +1016,7 @@ async function loadVideo() {
 
     if (noPrevPlayer) {
         el.addEventListener("loadeddata", () => {
-            if (document.pictureInPictureElement) el.requestPictureInPicture();
+            if (document.pictureInPictureElement && el instanceof HTMLVideoElement) el.requestPictureInPicture();
         });
         el.addEventListener("timeupdate", () => {
             const time = el.currentTime;

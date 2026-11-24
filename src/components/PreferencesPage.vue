@@ -420,9 +420,15 @@
                 <td v-text="instance.registered" />
                 <td class="max-md:hidden" v-text="instance.version" />
                 <td v-text="`${instance.up_to_date ? '&#9989;' : '&#10060;'}`" />
-                <td v-text="`${Number.parseFloat(instance.uptime_30d.toFixed(2))}%`" />
+                <td v-text="Number.isFinite(instance.uptime_30d) ? `${+instance.uptime_30d.toFixed(2)}%` : '—'" />
                 <td>
-                    <a v-t="'actions.view_ssl_score'" :href="sslScore(instance.api_url)" target="_blank" />
+                    <a
+                        v-if="instance.sslScoreUrl"
+                        v-t="'actions.view_ssl_score'"
+                        :href="instance.sslScoreUrl"
+                        target="_blank"
+                    />
+                    <span v-else>—</span>
                 </td>
             </tr>
         </tbody>
@@ -467,6 +473,7 @@ import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import CountryMapDefault from "@/utils/CountryMaps/en.json";
+import { defaultListenMode } from "@/utils/playbackMode.js";
 import ConfirmModal from "./ConfirmModal.vue";
 import CustomInstanceModal from "./CustomInstanceModal.vue";
 import PreferenceListbox from "./ui/PreferenceListbox.vue";
@@ -522,7 +529,7 @@ const autoPlayVideo = usePreferenceBoolean("playerAutoPlay", true);
 const teslaCanvasMode = usePreferenceBoolean("teslaCanvasMode", false);
 const autoDisplayCaptions = usePreferenceBoolean("autoDisplayCaptions", false);
 const autoPlayNextCountdown = usePreferenceNumber("autoPlayNextCountdown", 5);
-const listen = usePreferenceBoolean("listen", false);
+const listen = usePreferenceBoolean("listen", defaultListenMode());
 const resolutions = [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320];
 const preferHls = usePreferenceBoolean("preferHls", false);
 const defaultQuality = usePreferenceNumber("quality", 0);
@@ -711,22 +718,27 @@ function onChange() {
 async function fetchInstances() {
     customInstances.value = getCustomInstances();
 
-    fetchJson(import.meta.env.VITE_PIPED_INSTANCES).then(resp => {
-        publicInstances.value = resp;
-        if (!publicInstances.value.some(instance => instance.api_url == apiUrl())) {
-            publicInstances.value.push({
-                name: "Selected Instance",
-                api_url: apiUrl(),
-                locations: "Unknown",
-                cdn: false,
-                uptime_30d: 100,
-            });
-        }
-    });
+    let instances = [];
+    try {
+        const response = await fetchJson(import.meta.env.VITE_PIPED_INSTANCES);
+        if (Array.isArray(response)) instances = response.filter(instance => typeof instance?.api_url === "string");
+    } catch (error) {
+        console.warn("Could not load the instance directory", error);
+    }
+    if (!instances.some(instance => instance.api_url === apiUrl())) {
+        instances.push({ name: "Selected Instance", api_url: apiUrl(), locations: "Unknown" });
+    }
+    publicInstances.value = instances.map(instance => ({ ...instance, sslScoreUrl: sslScore(instance.api_url) }));
 }
 
 function sslScore(url) {
-    return "https://www.ssllabs.com/ssltest/analyze.html?d=" + new URL(url).host + "&latest";
+    try {
+        const api = new URL(url, window.location.origin);
+        if (api.origin === window.location.origin || api.protocol !== "https:") return null;
+        return "https://www.ssllabs.com/ssltest/analyze.html?d=" + encodeURIComponent(api.hostname) + "&latest";
+    } catch {
+        return null;
+    }
 }
 
 async function deleteAccount() {
