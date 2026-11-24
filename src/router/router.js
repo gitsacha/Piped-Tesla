@@ -3,7 +3,8 @@ import { getHomePage } from "@/composables/useMisc.js";
 
 const routes = [
     {
-        path: "/",
+        path: "/piped",
+        alias: "/",
         name: "Home",
         redirect: () => getHomePage() ?? "/trending",
     },

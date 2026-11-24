@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#131419">
+  <title>TesPlay</title>
+  <link rel="stylesheet" href="/tesplay/styles.css">
+  <script src="/tesplay/app.js" defer></script>
+</head>
+<body>
+  <main class="shell" id="main">
+    <header class="masthead"><h1>TesPlay</h1></header>
+    <nav class="apps" aria-label="Apps">
+      <a class="tile piped" href="/piped"><span class="icon" aria-hidden="true"><span class="play"></span></span><span>Piped</span></a>
+      <a class="tile mac" href="#desktop"><span class="icon" aria-hidden="true">▣</span><span>Mac Display</span></a>
+      <a class="tile waze" href="#route"><span class="icon" aria-hidden="true">➤</span><span>Waze</span></a>
+      <a class="tile charging" href="#charging"><span class="icon" aria-hidden="true">ϟ</span><span>Charging</span></a>
+      <a class="tile engine" href="#engine"><span class="icon" aria-hidden="true">≋</span><span>Engine Sounds</span></a>
+    </nav>
+
+    <section class="card" id="desktop" aria-labelledby="desktop-title" tabindex="-1">
+      <h2 id="desktop-title">Mac display</h2>
+      <p>While parked, open the display address shown by your Mac.</p>
+      <form id="desktop-form">
+        <label for="display-address">Display address</label>
+        <input id="display-address" name="display-address" type="url" placeholder="http://&hellip;" autocomplete="off" spellcheck="false" aria-describedby="display-help" required>
+        <div class="actions">
+          <button type="submit">Connect</button>
+          <a class="text-link" href="https://tesktop.com/how-to-use/">Tesktop setup <span aria-hidden="true">↗</span></a>
+        </div>
+        <p class="hint" id="display-help">If the car blocks a local address, type it directly into the Tesla browser.</p>
+      </form>
+    </section>
+
+    <section class="card" id="route" aria-labelledby="route-title" tabindex="-1">
+      <h2 id="route-title">Waze</h2>
+      <p>Open this page on your phone to hand a route to the Waze app.</p>
+      <form id="route-form">
+        <label for="destination">Destination</label>
+        <input id="destination" name="destination" type="search" placeholder="Address or place&hellip;" autocomplete="off" required>
+        <div class="actions">
+          <button type="submit">Open in Waze</button>
+          <a class="text-link" href="https://www.waze.com/live-map">Live Map <span aria-hidden="true">↗</span></a>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" id="charging" aria-labelledby="charging-title" tabindex="-1">
+      <h2 id="charging-title">Charging cost</h2>
+      <p>Estimate a Chargie stop, including the session fee.</p>
+      <form id="charging-form">
+        <div class="inputs">
+          <label for="energy">Energy (kWh)<input id="energy" name="energy" type="number" inputmode="decimal" autocomplete="off" min="0.01" step="0.01" value="30" required></label>
+          <label for="rate">Price per kWh<input id="rate" name="rate" type="number" inputmode="decimal" autocomplete="off" min="0" step="0.01" value="0.45" required></label>
+          <label for="session-fee">Session fee<input id="session-fee" name="session-fee" type="number" inputmode="decimal" autocomplete="off" min="0" step="0.01" placeholder="0.00" required></label>
+        </div>
+        <div class="actions">
+          <button type="submit">Calculate</button>
+          <output id="charge-total" for="energy rate session-fee" aria-live="polite"></output>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" id="engine" aria-labelledby="engine-title" tabindex="-1">
+      <h2 id="engine-title">Engine sounds</h2>
+      <p>A parked demo with a manual throttle.</p>
+      <label for="engine-profile">Sound</label>
+      <select id="engine-profile">
+        <option value="v8">V8</option>
+        <option value="inline">Inline-six</option>
+        <option value="electric">Electric</option>
+      </select>
+      <label for="throttle">Throttle</label>
+      <input id="throttle" type="range" min="0" max="100" value="0">
+      <button id="engine-toggle" type="button">Start sound</button>
+      <p id="engine-status" aria-live="polite" hidden></p>
+    </section>
+  </main>
+</body>
+</html>

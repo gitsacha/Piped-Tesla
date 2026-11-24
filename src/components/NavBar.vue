@@ -1,7 +1,7 @@
 <template>
     <nav class="relative flex w-full flex-wrap items-center justify-center px-2 pb-2.5 sm:px-4">
-        <div class="flex flex-1 justify-start">
-            <router-link class="flex items-center font-sans text-3xl font-bold" to="/"
+        <div class="flex flex-1 items-center justify-start gap-3">
+            <router-link class="flex items-center font-sans text-3xl font-bold" :to="{ name: 'Home' }"
                 ><img
                     alt="logo"
                     src="/img/icons/logo.svg"
@@ -9,6 +9,9 @@
                     width="32"
                     class="mr-[-0.6rem] w-10"
                 />iped</router-link
+            >
+            <a v-if="!isDevelopment" href="/" class="inline-flex min-h-11 items-center px-1 text-sm hover:underline"
+                >TesPlay</a
             >
         </div>
         <div class="relative inline-flex items-center max-md:hidden">
@@ -271,7 +274,7 @@ function submitSearch(e) {
             query: { search_query: searchText.value },
         });
     } else {
-        router.push("/");
+        router.push({ name: "Home" });
     }
     return;
 }
