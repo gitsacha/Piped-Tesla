@@ -134,7 +134,7 @@ const isCanvasMode = computed(() => {
         !audioOnly.value &&
         (route.query.tesla === "true" ||
             route.query.canvas === "true" ||
-            getPreferenceBoolean("teslaCanvasMode", false))
+            getPreferenceBoolean("teslaCanvasMode", isTeslaBrowser()))
     );
 });
 const usesAudioElement = computed(() => audioOnly.value || isCanvasMode.value);
