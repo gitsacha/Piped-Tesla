@@ -2,6 +2,7 @@ import "@/utils/firefoxMediaCapabilitiesFix.js";
 import { createApp } from "vue";
 import router from "@/router/router.js";
 import App from "./App.vue";
+import { rememberTeslaEntry } from "@/utils/playbackMode.js";
 
 import { createI18n } from "vue-i18n";
 import enLocale from "@/locales/en.json";
@@ -20,6 +21,8 @@ const i18n = createI18n({
 });
 
 window.i18n = i18n;
+
+rememberTeslaEntry();
 
 const app = createApp(App);
 app.use(i18n);

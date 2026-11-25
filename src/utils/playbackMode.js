@@ -1,7 +1,20 @@
 import { getPreferenceBoolean } from "@/composables/usePreferences.js";
 
+let teslaEntry = false;
+const teslaSessionKey = "tesplay:car";
+
+export function rememberTeslaEntry() {
+    teslaEntry = new URLSearchParams(window.location.search).get("car") === "1";
+    try {
+        if (teslaEntry) window.sessionStorage.setItem(teslaSessionKey, "1");
+        else teslaEntry = window.sessionStorage.getItem(teslaSessionKey) === "1";
+    } catch {
+        // The explicit entry still applies to this page when storage is restricted.
+    }
+}
+
 export function isTeslaBrowser() {
-    return navigator.userAgent.includes("Tesla");
+    return teslaEntry || navigator.userAgent.includes("Tesla");
 }
 
 export function defaultListenMode() {

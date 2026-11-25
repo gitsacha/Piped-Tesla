@@ -11,7 +11,9 @@ function stored(key, fallback, storage = localStorage) {
 }
 
 function watchLink(video, audioOnly, extras = {}) {
-    return "/watch?" + new URLSearchParams({ v: video.id, listen: audioOnly ? "1" : "0", ...extras });
+    const query = { v: video.id, listen: audioOnly ? "1" : "0", ...extras };
+    if (audioOnly) query.car = "1";
+    return "/watch?" + new URLSearchParams(query);
 }
 
 const last = stored("tesplay:last", defaultSet);
