@@ -288,13 +288,14 @@ function stopFollowing() {
     if (roadWatch === undefined) return;
     navigator.geolocation.clearWatch(roadWatch);
     roadWatch = undefined;
+    roadPosition = undefined;
     follow.textContent = "Follow my location";
+    roadStatus.textContent = "Location follow paused.";
 }
 
 follow.addEventListener("click", () => {
     if (roadWatch !== undefined) {
         stopFollowing();
-        roadStatus.textContent = "Location follow paused.";
         return;
     }
     if (!navigator.geolocation) {
@@ -326,7 +327,7 @@ follow.addEventListener("click", () => {
             roadStatus.textContent =
                 error.code === 1 ? "Allow location in browser settings to follow the map." : "Waiting for GPS…";
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 2000 },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
 });
 
