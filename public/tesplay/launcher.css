@@ -45,7 +45,6 @@ h1 { margin: 0; font-size: clamp(2.3rem, 6vw, 4.5rem); line-height: 1; letter-sp
 .piped { --tile-top: #a9314c; --tile-bottom: #591a33; }
 .mac { --tile-top: #49559d; --tile-bottom: #2d315d; }
 .waze { --tile-top: #286587; --tile-bottom: #1b405e; }
-.charging { --tile-top: #36705d; --tile-bottom: #21483f; }
 .engine { --tile-top: #8c5936; --tile-bottom: #533025; }
 .icon {
   display: grid;
@@ -85,9 +84,6 @@ button:hover { background: #454159; }
 .actions { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem 1rem; margin-top: .85rem; }
 .text-link { display: inline-flex; align-items: center; gap: .3rem; min-height: 44px; }
 .hint { margin: .55rem 0 0; font-size: .85rem; }
-.inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; }
-.inputs input { margin-top: .3rem; }
-output { display: block; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.5; }
 #engine-status { margin-bottom: 0; }
 
 @media (max-width: 700px) {
@@ -95,6 +91,28 @@ output { display: block; color: var(--accent); font-variant-numeric: tabular-num
   .apps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tile { min-height: 102px; }
 }
-@media (max-width: 365px) {
-  .inputs { grid-template-columns: 1fr; }
+
+[hidden] { display: none !important; }
+.masthead h1 a { color: inherit; text-decoration: none; }
+.music { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .65rem 1.5rem; margin-bottom: 16px; padding: 18px 22px; border: 1px solid #7c4556; border-radius: 18px; background: linear-gradient(115deg, #512339, #251e2c); }
+.music p { margin-bottom: 0; overflow-wrap: anywhere; }
+.music .actions { margin: 0; }
+.phone { --tile-top: #427366; --tile-bottom: #24493c; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: .65rem 1rem; border: 1px solid #858098; border-radius: 9px; color: inherit; background: #353247; font-weight: 650; text-decoration: none; }
+.button:hover { background: #454159; }
+.primary, .primary:hover { background: #f1deed; color: #2e1426; border-color: transparent; }
+.card.always { display: block; }
+.card.wide { max-width: none; }
+.sender { max-width: 580px; }
+.sender h1 { font-size: clamp(2.2rem, 7vw, 3.5rem); }
+.qr { display: block; width: min(220px, 100%); height: auto; margin-top: 1rem; background: white; border-radius: 8px; }
+.inbox { display: grid; gap: .65rem; padding: 0; list-style: none; }
+.inbox:empty { display: none; }
+.inbox li { border-top: 1px solid var(--line); padding: .7rem 0 0; overflow-wrap: anywhere; }
+.inbox .actions { margin-top: .2rem; }
+#desktop-form { margin-top: 1rem; }
+#road-map { margin-top: .75rem; border: 0; border-radius: 10px; width: 100%; height: min(65vh, 650px); min-height: 260px; background: #ddd; }
+@media (min-width: 701px) and (max-height: 700px) {
+  .masthead { padding-block: 1.5rem 1.2rem; }
+  .tile { min-height: 104px; aspect-ratio: auto; }
 }

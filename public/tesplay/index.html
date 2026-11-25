@@ -6,75 +6,91 @@
   <meta name="theme-color" content="#131419">
   <title>TesPlay</title>
   <link rel="stylesheet" href="/tesplay/launcher.css">
-  <script src="/tesplay/app.js" defer></script>
+  <script type="module" src="/tesplay/app.js"></script>
 </head>
 <body>
   <main class="shell" id="main">
-    <header class="masthead"><h1>TesPlay</h1></header>
+    <header class="masthead"><h1><a href="/">TesPlay</a></h1></header>
+    <section class="music" aria-labelledby="music-title">
+      <div>
+        <h2 id="music-title">Live Sets</h2>
+        <p id="resume-title">Dire Straits · Alchemy Live</p>
+      </div>
+      <div class="actions">
+        <a class="button primary" id="resume" href="/watch?v=8Pa9x9fZBtY&amp;listen=1">Play Alchemy Live</a>
+        <a class="button" href="/playlists">Saved Sets</a>
+        <a class="text-link" href="/piped">Browse Piped</a>
+      </div>
+    </section>
     <nav class="apps" aria-label="Apps">
-      <a class="tile piped" href="/piped"><span class="icon" aria-hidden="true"><span class="play"></span></span><span>Piped</span></a>
-      <a class="tile mac" href="#desktop"><span class="icon" aria-hidden="true">▣</span><span>Mac Display</span></a>
-      <a class="tile waze" href="#route"><span class="icon" aria-hidden="true">➤</span><span>Waze</span></a>
-      <a class="tile charging" href="#charging"><span class="icon" aria-hidden="true">ϟ</span><span>Charging</span></a>
+      <a class="tile phone" href="#phone"><span class="icon" aria-hidden="true">↗</span><span>Send from iPhone</span></a>
+      <a class="tile waze" href="#route"><span class="icon" aria-hidden="true">➤</span><span>Road Tools</span></a>
       <a class="tile engine" href="#engine"><span class="icon" aria-hidden="true">≋</span><span>Engine Sounds</span></a>
+      <a class="tile mac" href="#desktop"><span class="icon" aria-hidden="true">▣</span><span>Cast &amp; Work</span></a>
+      <a class="tile piped" href="#passenger"><span class="icon" aria-hidden="true"><span class="play"></span></span><span>Passenger Video</span></a>
     </nav>
-
-    <section class="card" id="desktop" aria-labelledby="desktop-title" tabindex="-1">
-      <h2 id="desktop-title">Mac display</h2>
-      <p>While parked, open the display address shown by your Mac.</p>
-      <form id="desktop-form">
-        <label for="display-address">Display address</label>
-        <input id="display-address" name="display-address" type="url" placeholder="http://&hellip;" autocomplete="off" spellcheck="false" aria-describedby="display-help" required>
-        <div class="actions">
-          <button type="submit">Connect</button>
-          <a class="text-link" href="https://tesktop.com/how-to-use/">Tesktop setup <span aria-hidden="true">↗</span></a>
-        </div>
-        <p class="hint" id="display-help">If the car blocks a local address, type it directly into the Tesla browser.</p>
-      </form>
+    <section class="card" id="phone" aria-labelledby="phone-title">
+      <h2 id="phone-title">Send from iPhone</h2>
+      <p>Sign into TesPlay on your iPhone first. Scan the code, then paste a link copied from the iPhone Share menu.</p>
+      <div class="actions">
+        <button id="pair" type="button">Show pairing code</button>
+        <a class="text-link" id="sender-link" hidden>Open sender</a>
+      </div>
+      <img id="pair-code" class="qr" alt="Pair your iPhone with this TesPlay screen" hidden>
+      <p id="pair-status" class="hint" role="status"></p>
+      <ul id="inbox" class="inbox"></ul>
+      <div id="queued" hidden>
+        <h3>Up Next</h3>
+        <ul id="queue" class="inbox"></ul>
+      </div>
     </section>
-
-    <section class="card" id="route" aria-labelledby="route-title" tabindex="-1">
-      <h2 id="route-title">Waze</h2>
-      <p>Open this page on your phone to hand a route to the Waze app.</p>
-      <form id="route-form">
-        <label for="destination">Destination</label>
-        <input id="destination" name="destination" type="search" placeholder="Address or place&hellip;" autocomplete="off" required>
-        <div class="actions">
-          <button type="submit">Open in Waze</button>
-          <a class="text-link" href="https://www.waze.com/live-map">Live Map <span aria-hidden="true">↗</span></a>
-        </div>
-      </form>
+    <section class="card wide" id="route" aria-labelledby="route-title">
+      <h2 id="route-title">Road Tools</h2>
+      <p>Waze Live Map follows your location after you allow GPS.</p>
+      <div class="actions">
+        <button id="follow" type="button">Follow my location</button>
+        <a class="text-link" href="https://app.codriver.io/">Spoken alerts with codriver ↗</a>
+      </div>
+      <p id="road-status" class="hint" role="status"></p>
+      <iframe id="road-map" title="Waze Live Map" allowfullscreen hidden></iframe>
     </section>
-
-    <section class="card" id="charging" aria-labelledby="charging-title" tabindex="-1">
-      <h2 id="charging-title">Charging cost</h2>
-      <p>Estimate a Chargie stop, including the session fee.</p>
-      <form id="charging-form">
-        <div class="inputs">
-          <label for="energy">Energy (kWh)<input id="energy" name="energy" type="number" inputmode="decimal" autocomplete="off" min="0.01" step="0.01" value="30" required></label>
-          <label for="rate">Price per kWh<input id="rate" name="rate" type="number" inputmode="decimal" autocomplete="off" min="0" step="0.01" value="0.45" required></label>
-          <label for="session-fee">Session fee<input id="session-fee" name="session-fee" type="number" inputmode="decimal" autocomplete="off" min="0" step="0.01" placeholder="0.00" required></label>
-        </div>
-        <div class="actions">
-          <button type="submit">Calculate</button>
-          <output id="charge-total" for="energy rate session-fee" aria-live="polite"></output>
-        </div>
-      </form>
-    </section>
-
-    <section class="card" id="engine" aria-labelledby="engine-title" tabindex="-1">
-      <h2 id="engine-title">Engine sounds</h2>
-      <p>A parked demo with a manual throttle.</p>
-      <label for="engine-profile">Sound</label>
+    <section class="card" id="engine" aria-labelledby="engine-title">
+      <h2 id="engine-title">Engine Sounds</h2>
+      <p>Start while parked and allow location. Revs and gear changes follow the car’s motion.</p>
+      <label for="engine-profile">Engine</label>
       <select id="engine-profile">
         <option value="v8">V8</option>
         <option value="inline">Inline-six</option>
         <option value="electric">Electric</option>
       </select>
-      <label for="throttle">Throttle</label>
-      <input id="throttle" type="range" min="0" max="100" value="0">
-      <button id="engine-toggle" type="button">Start sound</button>
-      <p id="engine-status" aria-live="polite" hidden></p>
+      <div class="actions">
+        <button id="engine-toggle" type="button">Start engine</button>
+        <a class="text-link" href="https://drivewatch.app/app">DriveWatch engines ↗</a>
+        <a class="text-link" href="https://tesrev.com/">TesRev with iPhone sensors ↗</a>
+      </div>
+      <p id="engine-status" class="hint" role="status"></p>
+    </section>
+    <section class="card" id="desktop" aria-labelledby="desktop-title">
+      <h2 id="desktop-title">Cast &amp; Work</h2>
+      <p>While parked, launch Tesktop on the Mac and open its receiver here. Use the address it shows if discovery misses the Mac.</p>
+      <div class="actions">
+        <a class="button primary" href="https://tesk.top/">Connect to Mac ↗</a>
+        <a class="text-link" href="https://tesktop.com/how-to-use/">Mac setup ↗</a>
+        <a class="text-link" href="https://tslamirror.com/">Mirror iPhone ↗</a>
+      </div>
+      <form id="desktop-form">
+        <label for="display-address">Mac display address</label>
+        <input id="display-address" name="display-address" type="url" placeholder="http://…" autocomplete="off" spellcheck="false" required>
+        <div class="actions"><button type="submit">Open address</button></div>
+      </form>
+      <p class="hint">If the Tesla blocks a link to a local address, type that address into the browser’s address bar.</p>
+    </section>
+    <section class="card" id="passenger" aria-labelledby="passenger-title">
+      <h2 id="passenger-title">Passenger Video</h2>
+      <p>Scan to watch the current set on a passenger’s phone or tablet. For rear passengers, the Highland also has its own Theater apps.</p>
+      <button id="passenger-qr" type="button">Show video QR</button>
+      <img id="video-code" class="qr" alt="Open the video on a passenger device" hidden>
+      <p class="hint" id="video-status" role="status"></p>
     </section>
   </main>
 </body>

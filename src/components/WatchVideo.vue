@@ -652,11 +652,47 @@ function navigate(time) {
     videoPlayer.value.seek(time);
 }
 
+let lastTesPlaySave = 0;
+let lastTesPlayVideo = "";
 function onTimeUpdate(time) {
     currentTime.value = time;
+    const id = getVideoId();
+    if (!id || !video.value?.title || time < 1) return;
+    const now = Date.now();
+    if (id === lastTesPlayVideo && now - lastTesPlaySave < 2000) return;
+    lastTesPlaySave = now;
+    lastTesPlayVideo = id;
+    try {
+        localStorage.setItem(
+            "tesplay:last",
+            JSON.stringify({
+                id,
+                title: video.value.title,
+                time,
+                list: playlistId.value,
+                index: index.value,
+                queue: route.query.tesplayQueue === "1",
+            }),
+        );
+    } catch {
+        // Playback also works when browser storage is disabled.
+    }
 }
 
 function onVideoEnded() {
+    if (!selectedAutoLoop.value && route.query.tesplayQueue === "1") {
+        try {
+            const queue = JSON.parse(localStorage.getItem("tesplay:queue") || "[]");
+            const next = queue.shift();
+            if (next && /^[\w-]{11}$/.test(next.id)) {
+                localStorage.setItem("tesplay:queue", JSON.stringify(queue));
+                void router.push({ path: "/watch", query: { v: next.id, listen: "1", tesplayQueue: "1" } });
+            }
+        } catch {
+            // A missing queue leaves playback at the end of the recording.
+        }
+        return;
+    }
     if (
         !selectedAutoLoop.value &&
         ((selectedAutoPlay.value >= 1 && playlist.value?.relatedStreams?.length > index.value) ||
@@ -757,6 +793,7 @@ onMounted(() => {
         isMobile.value = window.innerWidth < 1024;
     });
     getVideoData().then(() => {
+        if (route.query.tesplaySave === "1" && !video.value.error) showModal.value = true;
         (async () => {
             const videoId = getVideoId();
             if (window.db && getPreferenceBoolean("watchHistory", false) && !video.value.error) {
